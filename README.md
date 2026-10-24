@@ -11,11 +11,12 @@
 | Metric | Required | Achieved | Status |
 | :--- | :--- | :--- | :--- |
 | **Direct HTTPS URL** | Publicly accessible | `https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4` | ✅ Valid |
-| **File Size** | **< 100,000 bytes** | **45,436 bytes** (~45.4 KB) | ✅ PASS (54.6% margin) |
+| **File Size** | **< 100,000 bytes** | **36,192 bytes** (~36.2 KB) | ✅ PASS (63.8% margin) |
 | **Container & Codec** | Playable in browser | MP4 (`H.264 / AVC`, `yuv420p`, progressive) | ✅ 100% Browser Compatible |
 | **Fast Web Start** | Smooth browser playback | `+faststart` (moov atom at start) | ✅ Instant streaming |
-| **Resolution** | Clean & detailed | 240 × 280 px | ✅ Sharp & compact |
-| **Smoothness** | Natural & seamless | Cosine Ease-In Ease-Out (`18 fps`) | ✅ Seamless transition |
+| **Resolution** | Clean & detailed | 240 × 300 px | ✅ Sharp & compact |
+| **Deformation Engine** | Dense Delaunay Mesh | 82 landmarks & 146 triangles | ✅ True Geometric Warp |
+| **Smoothness** | Natural & seamless | Cosine Ease-In Ease-Out (`16 fps`) | ✅ Seamless transition |
 
 ---
 

@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-Face Morphing Pipeline: Martin Scorsese to Maggie Smith
-Creates an ultra-smooth, high quality face morph video encoded under 100 KB (100,000 bytes).
+True Face Morphing Pipeline: Martin Scorsese -> Maggie Smith
+Performs genuine dense Delaunay mesh deformation and warping so that:
+  - Scorsese's wide open smile physically closes and narrows into Maggie's subtle lips
+  - The thick, bushy eyebrows visibly thin out and arch upward
+  - The bulbous nose tip elongates downward and narrows
+  - The square jaw contracts into an elegant oval chin
+  - The colors and textures blend synchronously with the shape deformation
+
+Output: morph.mp4 strictly smaller than 100 KB (100,000 bytes).
 """
 
 import os
@@ -9,10 +16,10 @@ import sys
 import math
 import subprocess
 import requests
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. GEOMETRY & DELAUNAY TRIANGULATION
+# 1. GEOMETRY & DELAUNAY TRIANGULATION (BOWYER-WATSON)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Point:
@@ -32,17 +39,13 @@ def circumcircle_contains(p1, p2, p3, p):
     return dist2 <= r2
 
 def delaunay_triangulation(points):
-    """
-    Bowyer-Watson algorithm for Delaunay Triangulation in 2D.
-    Takes a list of (x, y) tuples and returns a list of (i, j, k) triangle vertex indices.
-    """
+    """Bowyer-Watson algorithm for Delaunay Triangulation in 2D."""
     pts = [Point(x, y) for x, y in points]
     min_x = min(p.x for p in pts) - 100
     max_x = max(p.x for p in pts) + 100
     min_y = min(p.y for p in pts) - 100
     max_y = max(p.y for p in pts) + 100
 
-    # Initial super-triangle bounding all points
     st1 = Point(min_x - 1000, min_y - 1000)
     st2 = Point(max_x + 1000, min_y - 1000)
     st3 = Point((min_x + max_x) / 2, max_y + 3000)
@@ -79,7 +82,6 @@ def delaunay_triangulation(points):
         for edge in polygon:
             triangles.append((edge[0], edge[1], i))
 
-    # Remove triangles containing super-triangle vertices
     return [tri for tri in triangles if not (tri[0] in st_indices or tri[1] in st_indices or tri[2] in st_indices)]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -88,8 +90,8 @@ def delaunay_triangulation(points):
 
 def solve_affine(src_tri, dst_tri):
     """
-    Computes affine transformation matrix parameters (a, b, c, d, e, f)
-    mapping destination triangle coordinates (x, y) back to source (u, v):
+    Computes affine transformation matrix mapping destination triangle
+    coordinates (x, y) to source (u, v):
         u = a*x + b*y + c
         v = d*x + e*y + f
     """
@@ -136,37 +138,7 @@ def warp_image_mesh(src_im, src_pts, dst_pts, triangles, width, height):
     return dst_canvas
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. FACE ALIGNMENT BY EYES
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_affine_align(eye_l, eye_r, target_l, target_r):
-    """Similarity transform mapping target canonical eye positions to source image coordinates."""
-    dx_t = target_r[0] - target_l[0]
-    dy_t = target_r[1] - target_l[1]
-    dist_t = math.hypot(dx_t, dy_t)
-    ang_t = math.atan2(dy_t, dx_t)
-
-    dx_s = eye_r[0] - eye_l[0]
-    dy_s = eye_r[1] - eye_l[1]
-    dist_s = math.hypot(dx_s, dy_s)
-    ang_s = math.atan2(dy_s, dx_s)
-
-    scale = dist_s / dist_t
-    theta = ang_s - ang_t
-
-    cos_t = scale * math.cos(theta)
-    sin_t = scale * math.sin(theta)
-
-    a = cos_t
-    b = -sin_t
-    c = eye_l[0] - cos_t * target_l[0] + sin_t * target_l[1]
-    d = sin_t
-    e = cos_t
-    f = eye_l[1] - sin_t * target_l[0] - cos_t * target_l[1]
-    return (a, b, c, d, e, f)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. MAIN PIPELINE
+# 3. MAIN PIPELINE
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
@@ -177,16 +149,16 @@ def main():
             pass
 
     print("=" * 60)
-    print("Face Morphing Pipeline: Martin Scorsese -> Maggie Smith")
+    print("Genuine Face Morphing: Martin Scorsese -> Maggie Smith")
     print("=" * 60)
 
     work_dir = os.path.dirname(os.path.abspath(__file__))
-    frames_dir = os.path.join(work_dir, "frames")
+    frames_dir = os.path.join(work_dir, "frames_v2")
     os.makedirs(frames_dir, exist_ok=True)
 
     sc_path = os.path.join(work_dir, "scorsese.jpg")
     mg_path = os.path.join(work_dir, "maggie.jpg")
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FaceMorph/1.0'}
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FaceMorph/2.0'}
 
     if not os.path.exists(sc_path):
         print("Downloading Martin Scorsese source photo...")
@@ -202,133 +174,152 @@ def main():
         with open(mg_path, 'wb') as f:
             f.write(r.content)
 
-    print("Loading and normalizing images...")
-    s_orig = Image.open(sc_path).convert('RGB')
-    m_orig = Image.open(mg_path).convert('RGB')
+    print("Normalizing faces and framing...")
+    sc_orig = Image.open(sc_path).convert('RGB')
+    mg_orig = Image.open(mg_path).convert('RGB')
 
-    # Resize previews for fast canonical extraction
-    s_preview = s_orig.resize((400, int(400 * s_orig.height / s_orig.width)), Image.Resampling.LANCZOS)
-    m_preview = m_orig.resize((400, int(400 * m_orig.height / m_orig.width)), Image.Resampling.LANCZOS)
+    sc_prev = sc_orig.resize((400, int(400 * sc_orig.height / sc_orig.width)), Image.Resampling.LANCZOS)
+    mg_prev = mg_orig.resize((400, int(400 * mg_orig.height / mg_orig.width)), Image.Resampling.LANCZOS)
 
-    CANVAS_W, CANVAS_H = 240, 280
-    T_EYE_L = (80, 115)
-    T_EYE_R = (160, 115)
+    # Scale-matched crop into 240x300
+    im_s = sc_prev.crop((60, 120, 334, 462)).resize((240, 300), Image.Resampling.LANCZOS)
+    im_m_raw = mg_prev.crop((85, 149, 335, 461)).resize((240, 300), Image.Resampling.LANCZOS)
 
-    # Eye positions in preview images:
-    # Scorsese: Left Eye (140, 217), Right Eye (254, 206)
-    # Maggie:   Left Eye (158, 232), Right Eye (262, 232)
-    aff_s = get_affine_align((140, 217), (254, 206), T_EYE_L, T_EYE_R)
-    aff_m = get_affine_align((158, 232), (262, 232), T_EYE_L, T_EYE_R)
+    # Inpaint Maggie's resting hand by mirroring symmetrical right cheek
+    clean_half = im_m_raw.crop((120, 0, 240, 300)).transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    mask = Image.new('L', (120, 300), 0)
+    d = ImageDraw.Draw(mask)
+    d.polygon([(10, 110), (85, 120), (88, 230), (50, 270), (0, 270), (0, 110)], fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(8))
+    im_m = im_m_raw.copy()
+    im_m.paste(clean_half, (0, 0), mask)
 
-    im_s = s_preview.transform((CANVAS_W, CANVAS_H), Image.Transform.AFFINE, aff_s, Image.Resampling.BICUBIC)
-    im_m = m_preview.transform((CANVAS_W, CANVAS_H), Image.Transform.AFFINE, aff_m, Image.Resampling.BICUBIC)
+    # Vignette background to eliminate harsh contrast
+    bg_mask = Image.new('L', (240, 300), 255)
+    d_bg = ImageDraw.Draw(bg_mask)
+    d_bg.ellipse([(15, 0), (225, 290)], fill=0)
+    bg_mask = bg_mask.filter(ImageFilter.GaussianBlur(15))
+    dark_bg = Image.new('RGB', (240, 300), (15, 18, 22))
+    im_m = Image.composite(dark_bg, im_m, bg_mask)
 
-    im_s.save(os.path.join(work_dir, "scorsese_aligned.jpg"))
-    im_m.save(os.path.join(work_dir, "maggie_aligned.jpg"))
+    # Subtle warm color grade to unify color spaces
+    mg_l = im_m.convert('L')
+    r_ch = mg_l.point(lambda p: min(255, int(p * 1.08)))
+    g_ch = mg_l.point(lambda p: min(255, int(p * 0.96)))
+    b_ch = mg_l.point(lambda p: min(255, int(p * 0.88)))
+    im_m = Image.merge('RGB', (r_ch, g_ch, b_ch))
 
-    # Canonical 63-point landmark geometry (aligned coordinate space)
-    landmarks_s = [
-        # Eyes
-        (80, 115), (97, 114), (61, 116), (80, 107), (80, 122),
-        (160, 115), (143, 114), (179, 116), (160, 107), (160, 122),
-        # Brows
-        (50, 95), (78, 86), (108, 92),
-        (132, 92), (162, 86), (190, 95),
+    im_s.save(os.path.join(work_dir, "scorsese_crop.jpg"))
+    im_m.save(os.path.join(work_dir, "maggie_crop.jpg"))
+
+    # Dense 82-point anatomical landmarks (tracking distinct feature deformations)
+    pts_sc = [
+        # Left eye
+        (70, 78), (88, 77), (52, 79), (70, 71), (70, 85),
+        # Right eye
+        (170, 75), (152, 77), (188, 77), (170, 69), (170, 83),
+        # Left brow top (thick bushy brow)
+        (30, 68), (55, 48), (85, 48), (115, 60),
+        # Left brow bottom
+        (35, 75), (65, 68), (95, 66), (115, 68),
+        # Right brow top
+        (125, 60), (155, 48), (185, 48), (210, 68),
+        # Right brow bottom
+        (125, 68), (145, 66), (175, 68), (205, 75),
         # Nose
-        (120, 112), (120, 130), (120, 150), (102, 153), (138, 153), (120, 160),
-        # Mouth
-        (85, 168), (155, 166), (120, 168), (120, 174), (120, 186),
-        # Chin & Jaw
-        (120, 218), (100, 212), (140, 212), (60, 185), (180, 185),
+        (120, 76), (120, 102), (120, 136), (96, 136), (144, 136), (120, 146),
+        # Mouth & Teeth (wide open grin)
+        (58, 160), (182, 150), (120, 152), (120, 160), (90, 162), (150, 158),
+        (120, 168), (120, 182), (90, 178), (150, 175),
+        # Chin & Jaw (square, wide, stubby)
+        (120, 222), (88, 216), (152, 216), (48, 185), (192, 185), (38, 135), (202, 135),
         # Cheeks & Temples
-        (55, 145), (185, 145), (48, 115), (192, 115),
+        (45, 110), (195, 110), (65, 125), (175, 125),
         # Forehead & Hair
-        (120, 60), (70, 55), (170, 55),
-        (120, 15), (55, 25), (185, 25),
-        (30, 90), (210, 90),
-        # Neck & Collar
-        (70, 245), (170, 245), (120, 255),
-        # Outer boundary anchors (prevent edge distortions)
+        (120, 30), (65, 25), (175, 25), (120, 0), (50, 5), (190, 5), (15, 60), (225, 60),
+        # Neck & Suit
+        (70, 255), (170, 255), (120, 260), (30, 290), (210, 290),
+        # Outer Boundary Pins
         (0, 0), (60, 0), (120, 0), (180, 0), (239, 0),
-        (0, 70), (239, 70),
-        (0, 140), (239, 140),
-        (0, 210), (239, 210),
-        (0, 279), (60, 279), (120, 279), (180, 279), (239, 279)
+        (0, 75), (239, 75),
+        (0, 150), (239, 150),
+        (0, 225), (239, 225),
+        (0, 299), (60, 299), (120, 299), (180, 299), (239, 299)
     ]
 
-    landmarks_m = [
-        # Eyes
-        (80, 115), (98, 117), (62, 114), (80, 107), (80, 122),
-        (160, 115), (142, 117), (178, 114), (160, 107), (160, 122),
-        # Brows
-        (52, 97), (80, 84), (105, 94),
-        (135, 94), (160, 84), (188, 97),
-        # Nose
-        (120, 114), (120, 136), (120, 168), (105, 168), (135, 168), (120, 175),
-        # Mouth
-        (93, 198), (147, 198), (120, 196), (120, 200), (120, 208),
-        # Chin & Jaw
-        (120, 240), (100, 232), (140, 232), (65, 205), (175, 205),
+    pts_mg = [
+        # Left eye
+        (68, 77), (86, 79), (50, 77), (68, 70), (68, 85),
+        # Right eye
+        (172, 77), (154, 79), (190, 77), (172, 70), (172, 85),
+        # Left brow top (thin arched brow)
+        (35, 62), (55, 48), (80, 48), (105, 56),
+        # Left brow bottom
+        (35, 66), (55, 54), (80, 54), (105, 60),
+        # Right brow top
+        (135, 56), (160, 48), (185, 48), (205, 62),
+        # Right brow bottom
+        (135, 60), (160, 54), (185, 54), (205, 66),
+        # Nose (slender, 14px lower tip!)
+        (120, 80), (120, 115), (120, 150), (100, 148), (140, 148), (120, 158),
+        # Mouth & Teeth (closed lips, 42px lower, 52px narrower!)
+        (84, 202), (156, 202), (120, 194), (120, 200), (98, 201), (142, 201),
+        (120, 202), (120, 212), (98, 208), (142, 208),
+        # Chin & Jaw (46px lower, elegant oval!)
+        (120, 268), (92, 252), (148, 252), (58, 225), (182, 225), (35, 145), (195, 145),
         # Cheeks & Temples
-        (60, 155), (180, 155), (46, 115), (194, 115),
+        (42, 110), (198, 110), (68, 140), (172, 140),
         # Forehead & Hair
-        (120, 60), (70, 55), (170, 55),
-        (120, 15), (50, 20), (190, 20),
-        (20, 90), (220, 90),
-        # Neck & Collar
-        (70, 255), (170, 255), (120, 260),
-        # Outer boundary anchors
+        (120, 30), (65, 25), (175, 25), (120, 0), (45, 5), (195, 5), (10, 60), (230, 60),
+        # Neck & Suit / Scarf
+        (65, 275), (175, 275), (120, 285), (20, 290), (220, 290),
+        # Outer Boundary Pins
         (0, 0), (60, 0), (120, 0), (180, 0), (239, 0),
-        (0, 70), (239, 70),
-        (0, 140), (239, 140),
-        (0, 210), (239, 210),
-        (0, 279), (60, 279), (120, 279), (180, 279), (239, 279)
+        (0, 75), (239, 75),
+        (0, 150), (239, 150),
+        (0, 225), (239, 225),
+        (0, 299), (60, 299), (120, 299), (180, 299), (239, 299)
     ]
 
-    # Compute Delaunay Triangulation on average landmark coordinates
-    avg_pts = [((ps[0] + pm[0]) / 2, (ps[1] + pm[1]) / 2) for ps, pm in zip(landmarks_s, landmarks_m)]
+    avg_pts = [((ps[0] + pm[0]) / 2, (ps[1] + pm[1]) / 2) for ps, pm in zip(pts_sc, pts_mg)]
     triangles = delaunay_triangulation(avg_pts)
-    print(f"Constructed {len(triangles)} Delaunay triangles across {len(avg_pts)} landmark vertices.")
+    print(f"Constructed {len(triangles)} Delaunay triangles across {len(avg_pts)} landmarks.")
 
-    N_MORPH = 40      # 40 smooth morphing steps
-    HOLD_START = 6   # Hold initial face for viewer context
-    HOLD_END = 6     # Hold target face
-    FPS = 18
+    N_MORPH = 36
+    HOLD_START = 6
+    HOLD_END = 6
+    FPS = 16
 
-    print(f"Rendering {HOLD_START + N_MORPH + HOLD_END} frames with non-linear cosine easing...")
-    frame_idx = 0
+    print("Generating morph frames with genuine feature deformation...")
+    idx = 0
 
-    # Hold start: Scorsese
     for _ in range(HOLD_START):
-        im_s.save(os.path.join(frames_dir, f"frame_{frame_idx:04d}.png"))
-        frame_idx += 1
+        im_s.save(os.path.join(frames_dir, f"frame_{idx:04d}.png"))
+        idx += 1
 
-    # Morph transition with smooth cosine easing
     for i in range(1, N_MORPH):
-        linear_t = i / N_MORPH
-        ease_t = (1.0 - math.cos(linear_t * math.pi)) / 2.0
+        t_lin = i / N_MORPH
+        # Cosine ease-in ease-out
+        t = (1.0 - math.cos(t_lin * math.pi)) / 2.0
 
         mid_pts = [
-            ((1 - ease_t) * ps[0] + ease_t * pm[0], (1 - ease_t) * ps[1] + ease_t * pm[1])
-            for ps, pm in zip(landmarks_s, landmarks_m)
+            ((1 - t) * ps[0] + t * pm[0], (1 - t) * ps[1] + t * pm[1])
+            for ps, pm in zip(pts_sc, pts_mg)
         ]
-        warped_s = warp_image_mesh(im_s, landmarks_s, mid_pts, triangles, CANVAS_W, CANVAS_H)
-        warped_m = warp_image_mesh(im_m, landmarks_m, mid_pts, triangles, CANVAS_W, CANVAS_H)
-        blended = Image.blend(warped_s, warped_m, ease_t)
-        blended.save(os.path.join(frames_dir, f"frame_{frame_idx:04d}.png"))
-        frame_idx += 1
+        ws = warp_image_mesh(im_s, pts_sc, mid_pts, triangles, 240, 300)
+        wm = warp_image_mesh(im_m, pts_mg, mid_pts, triangles, 240, 300)
+        blended = Image.blend(ws, wm, t)
+        blended.save(os.path.join(frames_dir, f"frame_{idx:04d}.png"))
+        idx += 1
 
-    # Hold end: Maggie
     for _ in range(HOLD_END):
-        im_m.save(os.path.join(frames_dir, f"frame_{frame_idx:04d}.png"))
-        frame_idx += 1
+        im_m.save(os.path.join(frames_dir, f"frame_{idx:04d}.png"))
+        idx += 1
 
-    total_frames = frame_idx
-    print(f"Successfully generated {total_frames} frames.")
+    print(f"Generated {idx} total frames.")
 
-    # Encode with FFmpeg
     output_mp4 = os.path.join(work_dir, "morph.mp4")
-    ffmpeg_cmd = [
+    cmd = [
         "ffmpeg", "-y",
         "-framerate", str(FPS),
         "-i", os.path.join(frames_dir, "frame_%04d.png"),
@@ -340,20 +331,20 @@ def main():
         output_mp4
     ]
 
-    print("Encoding MP4 video with FFmpeg...")
-    subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print("Encoding video with FFmpeg...")
+    subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     size_bytes = os.path.getsize(output_mp4)
     size_kb = size_bytes / 1000.0
 
     print("\n" + "=" * 60)
-    print(f"Video generated: {output_mp4}")
+    print(f"Video saved: {output_mp4}")
     print(f"File size: {size_bytes:,} bytes ({size_kb:.2f} KB)")
-    print(f"Target limit: < 100,000 bytes (100.00 KB)")
+    print(f"Limit: < 100,000 bytes (100.00 KB)")
     if size_bytes < 100000:
-        print("[PASS] File is well within the 100 KB limit!")
+        print("[PASS] Video is strictly under the 100 KB limit!")
     else:
-        print("[FAIL] File exceeds 100 KB limit! Increase CRF.")
+        print("[FAIL] File size exceeds 100 KB limit!")
     print("=" * 60)
 
 if __name__ == "__main__":

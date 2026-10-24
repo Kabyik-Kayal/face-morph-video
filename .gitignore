@@ -1,5 +1,6 @@
 frames/
 frames60/
+frames_v2/
 scorsese.jpg
 *_preview.jpg
 *_grid*.jpg
@@ -8,5 +9,15 @@ s_aligned.jpg
 m_aligned.jpg
 blend_50.jpg
 morph_mid_50.jpg
+test_*.jpg
+warp_*.jpg
+real_morph_*.jpg
+*_c2*.jpg
+*_crop*.jpg
+*_clean.jpg
+*_dark.jpg
+*_color.jpg
+morph_v2.mp4
+morph_strip_v2.jpg
 __pycache__/
 *.pyc
