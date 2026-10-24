@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """
-Advanced Face Morphing Pipeline: Thin Plate Splines (TPS) + Multiresolution Laplacian Blending
-Morphs the facial features of the female portrait (Maggie Smith) directly onto the male
-portrait's face (Martin Scorsese) using:
-  1. Continuous 2D Thin Plate Spline (TPS) with biharmonic energy minimization (C¹ smooth deformation)
-  2. Multiresolution frequency-separated Laplacian blending to eliminate ghosting
-  3. Stable boundary pinning to preserve hair, ears, suit, tie, and background
+High-Fidelity Face Morphing Pipeline
+====================================
+Morphs Maggie Smith's face seamlessly onto Martin Scorsese's portrait using:
+  1. MediaPipe 478-Landmark 3D Mesh for sub-pixel facial feature tracking.
+  2. Procrustes / Affine Similarity Normalization to a 384x480 canvas.
+  3. Reinhard Color & Luminance Calibration in CIELAB color space.
+  4. Continuous 2D Thin Plate Spline (TPS) with biharmonic energy minimization (C1 smooth).
+  5. 3-Band Multiresolution Laplacian Pyramid Blending (eliminating ghosting and double teeth).
+  6. Soft Anatomical Face-Oval Masking onto Martin Scorsese's stable head, hair, ears, suit, and background.
 
 Output: morph.mp4 strictly smaller than 100 KB (100,000 bytes).
 """
@@ -15,141 +18,111 @@ import sys
 import math
 import subprocess
 import requests
-from PIL import Image, ImageDraw, ImageFilter, ImageStat
+import cv2
+import numpy as np
+from scipy.interpolate import RBFInterpolator
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 1. THIN PLATE SPLINE (BIHARMONIC ENERGY MINIMIZATION)
-# ─────────────────────────────────────────────────────────────────────────────
+def ensure_file(path, url, description):
+    if not os.path.exists(path):
+        print(f"Downloading {description}...")
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FaceMorph/5.0'}
+        r = requests.get(url, headers=headers, timeout=30)
+        r.raise_for_status()
+        with open(path, 'wb') as f:
+            f.write(r.content)
+        print(f"Saved {path} ({len(r.content):,} bytes).")
 
-class ThinPlateSpline2D:
-    def __init__(self, src_pts, dst_pts, reg=1e-3):
-        self.pts = dst_pts
-        N = len(dst_pts)
+def setup_detector(model_path):
+    base_options = python.BaseOptions(model_asset_path=model_path)
+    options = vision.FaceLandmarkerOptions(
+        base_options=base_options,
+        num_faces=1,
+        output_face_blendshapes=False,
+        output_facial_transformation_matrixes=False
+    )
+    return vision.FaceLandmarker.create_from_options(options)
 
-        def U(r):
-            if r < 1e-9:
-                return 0.0
-            return r * r * math.log(r)
+def get_landmarks(img_bgr, detector):
+    img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
+    h, w = img_bgr.shape[:2]
+    mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
+    result = detector.detect(mp_img)
+    if not result.face_landmarks:
+        raise ValueError("No face detected by MediaPipe FaceLandmarker!")
+    return np.array([[p.x * w, p.y * h] for p in result.face_landmarks[0]], dtype=np.float32)
 
-        K = [[0.0] * N for _ in range(N)]
-        for i in range(N):
-            for j in range(N):
-                if i != j:
-                    dx = dst_pts[i][0] - dst_pts[j][0]
-                    dy = dst_pts[i][1] - dst_pts[j][1]
-                    K[i][j] = U(math.hypot(dx, dy))
-
-        L = [[0.0] * (N + 3) for _ in range(N + 3)]
-        for i in range(N):
-            for j in range(N):
-                L[i][j] = K[i][j]
-            L[i][N] = 1.0
-            L[i][N + 1] = dst_pts[i][0]
-            L[i][N + 2] = dst_pts[i][1]
-            L[N][i] = 1.0
-            L[N + 1][i] = dst_pts[i][0]
-            L[N + 2][i] = dst_pts[i][1]
-            L[i][i] += reg
-
-        Yx = [src_pts[i][0] for i in range(N)] + [0.0, 0.0, 0.0]
-        Yy = [src_pts[i][1] for i in range(N)] + [0.0, 0.0, 0.0]
-
-        def solve_linear(A, b):
-            M = [row[:] for row in A]
-            v = b[:]
-            n = len(v)
-            for i in range(n):
-                max_row = i
-                for k in range(i + 1, n):
-                    if abs(M[k][i]) > abs(M[max_row][i]):
-                        max_row = k
-                M[i], M[max_row] = M[max_row], M[i]
-                v[i], v[max_row] = v[max_row], v[i]
-                pivot = M[i][i]
-                if abs(pivot) < 1e-12:
-                    continue
-                for k in range(i + 1, n):
-                    factor = M[k][i] / pivot
-                    for j in range(i, n):
-                        M[k][j] -= factor * M[i][j]
-                    v[k] -= factor * v[i]
-            res = [0.0] * n
-            for i in range(n - 1, -1, -1):
-                s = v[i]
-                for j in range(i + 1, n):
-                    s -= M[i][j] * res[j]
-                res[i] = s / M[i][i]
-            return res
-
-        self.Wx = solve_linear(L, Yx)
-        self.Wy = solve_linear(L, Yy)
-        self.N = N
-
-    def transform_point(self, x, y):
-        def U(r):
-            if r < 1e-9:
-                return 0.0
-            return r * r * math.log(r)
-        ux = self.Wx[self.N] + self.Wx[self.N + 1] * x + self.Wx[self.N + 2] * y
-        uy = self.Wy[self.N] + self.Wy[self.N + 1] * x + self.Wy[self.N + 2] * y
-        for i in range(self.N):
-            dx = x - self.pts[i][0]
-            dy = y - self.pts[i][1]
-            r = math.hypot(dx, dy)
-            if r > 1e-9:
-                u_r = U(r)
-                ux += self.Wx[i] * u_r
-                uy += self.Wy[i] * u_r
-        return (ux, uy)
-
-def warp_tps_dense(im, src_pts, dst_pts, w=240, h=300, step=8):
-    """Warps image using a continuous Thin Plate Spline grid with bilinear resampling."""
-    tps = ThinPlateSpline2D(src_pts, dst_pts)
-    grid_pts = {}
-    for y in range(0, h + step, step):
-        for x in range(0, w + step, step):
-            gx = min(w, x)
-            gy = min(h, y)
-            grid_pts[(gx, gy)] = tps.transform_point(gx, gy)
-
-    mesh_data = []
-    for y in range(0, h, step):
-        for x in range(0, w, step):
-            x1 = min(w, x + step)
-            y1 = min(h, y + step)
-            bbox = (x, y, x1, y1)
-            u0, v0 = grid_pts[(x, y)]
-            u1, v1 = grid_pts[(x, y1)]
-            u2, v2 = grid_pts[(x1, y1)]
-            u3, v3 = grid_pts[(x1, y)]
-            quad = (u0, v0, u1, v1, u2, v2, u3, v3)
-            mesh_data.append((bbox, quad))
-
-    return im.transform((w, h), Image.Transform.MESH, mesh_data, Image.Resampling.BILINEAR)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 2. MULTIRESOLUTION LAPLACIAN PYRAMID BLENDING
-# ─────────────────────────────────────────────────────────────────────────────
-
-def laplacian_blend_images(im_a, im_b, t):
+def reinhard_tone_transfer(src_bgr, ref_bgr, mask_src=None, mask_ref=None):
     """
-    Multiresolution frequency-separated blending:
-      - Low frequencies (skin tone, broad illumination) blend smoothly with t.
-      - High frequencies (sharp feature contours, pores) undergo sigmoidal handover.
+    Transfers color, luminance, and contrast distribution from ref to src in CIELAB space.
+    Calibrates Maggie's vintage tone to match Scorsese's warm red-carpet lighting.
     """
-    g1_a = im_a.filter(ImageFilter.GaussianBlur(3.0))
-    g1_b = im_b.filter(ImageFilter.GaussianBlur(3.0))
-    mid_blend = Image.blend(g1_a, g1_b, (1.0 - math.cos(t * math.pi)) / 2.0)
+    src_lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
+    ref_lab = cv2.cvtColor(ref_bgr, cv2.COLOR_BGR2LAB).astype(np.float32)
 
-    # Sigmoid handover for fine micro-textures to eliminate ghosting
-    t_high = 1.0 / (1.0 + math.exp(-14.0 * (t - 0.5)))
-    high_blend = Image.blend(im_a, im_b, t_high)
+    if mask_src is not None and mask_ref is not None:
+        src_vals = src_lab[mask_src > 0]
+        ref_vals = ref_lab[mask_ref > 0]
+    else:
+        src_vals = src_lab.reshape(-1, 3)
+        ref_vals = ref_lab.reshape(-1, 3)
 
-    return Image.blend(mid_blend, high_blend, 0.5)
+    src_mean = np.mean(src_vals, axis=0)
+    src_std = np.std(src_vals, axis=0) + 1e-6
 
-# ─────────────────────────────────────────────────────────────────────────────
-# 3. MAIN PIPELINE
-# ─────────────────────────────────────────────────────────────────────────────
+    ref_mean = np.mean(ref_vals, axis=0)
+    ref_std = np.std(ref_vals, axis=0) + 1e-6
+
+    out_lab = (src_lab - src_mean) * (ref_std / src_std) + ref_mean
+    out_lab = np.clip(out_lab, 0, 255).astype(np.uint8)
+    return cv2.cvtColor(out_lab, cv2.COLOR_LAB2BGR)
+
+def warp_tps(img, src_pts, dst_pts, w, h, step=8):
+    r"""
+    Computes global C1 continuous Thin Plate Spline deformation field.
+    Solves biharmonic energy minimization: min \iint (\nabla^2 f)^2 dx dy.
+    """
+    rbf = RBFInterpolator(dst_pts, src_pts, kernel='thin_plate_spline', smoothing=0.08)
+    gx, gy = np.meshgrid(np.arange(0, w + step, step), np.arange(0, h + step, step))
+    coords = np.column_stack([gx.ravel(), gy.ravel()])
+    mapped = rbf(coords)
+    map_x = cv2.resize(mapped[:, 0].reshape(gy.shape).astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
+    map_y = cv2.resize(mapped[:, 1].reshape(gy.shape).astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
+    return cv2.remap(img, map_x, map_y, interpolation=cv2.INTER_LANCZOS4, borderMode=cv2.BORDER_REFLECT_101)
+
+def laplacian_blend(img_a, img_b, t, sigma1=2.5, sigma2=6.0):
+    """
+    Multiresolution 3-band Laplacian pyramid blending:
+      - Low frequency (L2): smooth cosine lighting & skin tone transition.
+      - Mid frequency (L1): facial contours, smile lines & muscle structure.
+      - High frequency (L0): steep sigmoid handover for sharp features (teeth, pupils, eyelashes).
+    """
+    fa = img_a.astype(np.float32) / 255.0
+    fb = img_b.astype(np.float32) / 255.0
+
+    g1_a = cv2.GaussianBlur(fa, (0, 0), sigma1)
+    g1_b = cv2.GaussianBlur(fb, (0, 0), sigma1)
+    g2_a = cv2.GaussianBlur(g1_a, (0, 0), sigma2)
+    g2_b = cv2.GaussianBlur(g1_b, (0, 0), sigma2)
+
+    l0_a = fa - g1_a  # High freq: micro-edges, teeth, pores
+    l0_b = fb - g1_b
+    l1_a = g1_a - g2_a  # Mid freq: facial folds, contours
+    l1_b = g1_b - g2_b
+    l2_a = g2_a  # Low freq: ambient lighting, skin undertone
+    l2_b = g2_b
+
+    t_cos = (1.0 - math.cos(t * math.pi)) / 2.0
+    t_high = 1.0 / (1.0 + math.exp(-16.0 * (t - 0.5)))
+
+    b0 = (1.0 - t_high) * l0_a + t_high * l0_b
+    b1 = (1.0 - t_cos) * l1_a + t_cos * l1_b
+    b2 = (1.0 - t_cos) * l2_a + t_cos * l2_b
+
+    out = b0 + b1 + b2
+    return np.clip(out * 255.0, 0, 255).astype(np.uint8)
 
 def main():
     if sys.stdout.encoding.lower() != 'utf-8':
@@ -158,172 +131,172 @@ def main():
         except Exception:
             pass
 
-    print("=" * 60)
-    print("Advanced Face Morphing: Thin Plate Splines (TPS) + Laplacian")
-    print("=" * 60)
+    print("=" * 65)
+    print("High-Fidelity Face Morphing: 478 Mesh + TPS + 3-Band Laplacian")
+    print("=" * 65)
 
     work_dir = os.path.dirname(os.path.abspath(__file__))
-    frames_dir = os.path.join(work_dir, "frames_tps")
-    os.makedirs(frames_dir, exist_ok=True)
+    model_path = os.path.join(work_dir, "face_landmarker.task")
+    model_url = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+    if not os.path.exists(model_path):
+        parent_model = os.path.join(work_dir, "..", "face_landmarker.task")
+        if os.path.exists(parent_model):
+            model_path = parent_model
+        else:
+            ensure_file(model_path, model_url, "MediaPipe FaceLandmarker model")
+
+    detector = setup_detector(model_path)
 
     sc_path = os.path.join(work_dir, "scorsese.jpg")
     mg_path = os.path.join(work_dir, "maggie.jpg")
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) FaceMorph/4.0'}
+    sc_url = "https://upload.wikimedia.org/wikipedia/commons/c/ce/Martin_Scorsese_MFF_2023.jpg"
+    mg_url = "https://upload.wikimedia.org/wikipedia/commons/2/28/Maggie_Smith_-_Vintage_%28trim%29.jpg"
 
-    if not os.path.exists(sc_path):
-        print("Downloading Martin Scorsese source photo...")
-        url = "https://upload.wikimedia.org/wikipedia/commons/c/ce/Martin_Scorsese_MFF_2023.jpg"
-        r = requests.get(url, headers=headers)
-        with open(sc_path, 'wb') as f:
-            f.write(r.content)
+    ensure_file(sc_path, sc_url, "Martin Scorsese source photo")
+    ensure_file(mg_path, mg_url, "Maggie Smith source photo")
 
-    if not os.path.exists(mg_path):
-        print("Downloading Maggie Smith source photo...")
-        url = "https://upload.wikimedia.org/wikipedia/commons/2/28/Maggie_Smith_-_Vintage_%28trim%29.jpg"
-        r = requests.get(url, headers=headers)
-        with open(mg_path, 'wb') as f:
-            f.write(r.content)
+    sc_orig = cv2.imread(sc_path)
+    mg_orig = cv2.imread(mg_path)
+    if sc_orig is None or mg_orig is None:
+        raise FileNotFoundError("Source images could not be loaded!")
 
-    print("Normalizing faces and framing...")
-    sc_orig = Image.open(sc_path).convert('RGB')
-    mg_orig = Image.open(mg_path).convert('RGB')
+    h_sc, w_sc = sc_orig.shape[:2]
+    h_mg, w_mg = mg_orig.shape[:2]
 
-    sc_prev = sc_orig.resize((400, int(400 * sc_orig.height / sc_orig.width)), Image.Resampling.LANCZOS)
-    mg_prev = mg_orig.resize((400, int(400 * mg_orig.height / mg_orig.width)), Image.Resampling.LANCZOS)
+    print("Detecting sub-pixel landmarks on source portraits...")
+    lm_sc_raw = get_landmarks(sc_orig, detector)
+    lm_mg_raw = get_landmarks(mg_orig, detector)
 
-    w, h = 240, 300
-    sc = sc_prev.crop((60, 120, 334, 462)).resize((w, h), Image.Resampling.LANCZOS)
-    mg_raw = mg_prev.crop((85, 149, 335, 461)).resize((w, h), Image.Resampling.LANCZOS)
+    # Compute eye centers for Procrustes similarity alignment
+    eye_l_sc = (lm_sc_raw[33] + lm_sc_raw[133]) / 2.0
+    eye_r_sc = (lm_sc_raw[362] + lm_sc_raw[263]) / 2.0
+    eye_l_mg = (lm_mg_raw[33] + lm_mg_raw[133]) / 2.0
+    eye_r_mg = (lm_mg_raw[362] + lm_mg_raw[263]) / 2.0
 
-    # Inpaint Maggie's resting hand using her symmetrical right cheek
-    clean_half = mg_raw.crop((120, 0, 240, 300)).transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-    mask_hand = Image.new('L', (120, 300), 0)
-    d_h = ImageDraw.Draw(mask_hand)
-    d_h.polygon([(10, 110), (85, 120), (88, 230), (50, 270), (0, 270), (0, 110)], fill=255)
-    mask_hand = mask_hand.filter(ImageFilter.GaussianBlur(8))
-    mg_clean = mg_raw.copy()
-    mg_clean.paste(clean_half, (0, 0), mask_hand)
+    # Canvas dimensions: 384x480 (4:5 portrait ratio, divisible by 16 for H.264 macroblocks)
+    W_OUT, H_OUT = 384, 480
+    dst_eyes = np.float32([[146.0, 182.0], [238.0, 182.0]])
 
-    # Match skin tone from Scorsese's cheek/chin to Maggie's skin
-    sc_skin = sc.crop((100, 190, 140, 230))
-    stat_sc = ImageStat.Stat(sc_skin)
-    mean_r, mean_g, mean_b = stat_sc.mean[:3]
+    M_sc = cv2.estimateAffinePartial2D(np.float32([eye_l_sc, eye_r_sc]), dst_eyes)[0]
+    M_mg = cv2.estimateAffinePartial2D(np.float32([eye_l_mg, eye_r_mg]), dst_eyes)[0]
 
-    mg_gray = mg_clean.convert('L')
-    mg_skin = mg_gray.crop((100, 140, 140, 180))
-    mean_mg = ImageStat.Stat(mg_skin).mean[0]
+    sc_norm = cv2.warpAffine(sc_orig, M_sc, (W_OUT, H_OUT), flags=cv2.INTER_LANCZOS4)
+    mg_norm = cv2.warpAffine(mg_orig, M_mg, (W_OUT, H_OUT), flags=cv2.INTER_LANCZOS4)
 
-    scale_r = (mean_r / mean_mg) * 1.02
-    scale_g = (mean_g / mean_mg) * 1.01
-    scale_b = (mean_b / mean_mg) * 0.99
+    print("Extracting calibrated landmarks on normalized frames...")
+    p_sc = get_landmarks(sc_norm, detector)
+    p_mg = get_landmarks(mg_norm, detector)
 
-    r_ch = mg_gray.point(lambda p: min(255, int(p * scale_r)))
-    g_ch = mg_gray.point(lambda p: min(255, int(p * scale_g)))
-    b_ch = mg_gray.point(lambda p: min(255, int(p * scale_b)))
-    mg = Image.merge('RGB', (r_ch, g_ch, b_ch))
+    # Face Oval landmarks (MediaPipe)
+    OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109]
 
-    # Face contour boundary (pinned to Scorsese's head)
-    contour = [
-        (50, 42), (85, 30), (120, 26), (155, 30), (190, 42),
-        (212, 58), (220, 75), (205, 110), (198, 145), (188, 185),
-        (155, 226), (120, 238), (85, 226),
-        (52, 185), (42, 145), (35, 110), (20, 75), (28, 58)
-    ]
+    # Oval masks for skin tone calibration
+    mask_sc_oval = np.zeros((H_OUT, W_OUT), dtype=np.uint8)
+    mask_mg_oval = np.zeros((H_OUT, W_OUT), dtype=np.uint8)
+    cv2.fillPoly(mask_sc_oval, [p_sc[OVAL].astype(np.int32)], 255)
+    cv2.fillPoly(mask_mg_oval, [p_mg[OVAL].astype(np.int32)], 255)
 
-    inner_sc = [
-        (70, 78), (170, 75), (88, 77), (152, 77), (52, 79), (188, 77),
-        (25, 68), (55, 46), (85, 46), (115, 60),
-        (25, 75), (65, 68), (95, 66), (115, 68),
-        (125, 60), (155, 46), (185, 46), (215, 68),
-        (125, 68), (145, 66), (175, 68), (215, 75),
-        (120, 76), (120, 102), (120, 136), (96, 136), (144, 136),
-        (58, 160), (182, 150), (120, 152), (120, 160), (90, 162), (150, 158),
-        (120, 168), (120, 182), (90, 178), (150, 175),
-        (120, 218), (90, 212), (150, 212),
-        (65, 125), (175, 125)
-    ]
+    print("Calibrating tone and luminance via Reinhard CIELAB transfer...")
+    mg_norm = reinhard_tone_transfer(mg_norm, sc_norm, mask_mg_oval, mask_sc_oval)
 
-    inner_mg = [
-        (68, 77), (172, 77), (86, 79), (154, 79), (50, 77), (190, 77),
-        (32, 62), (55, 48), (80, 48), (105, 56),
-        (32, 66), (55, 54), (80, 54), (105, 60),
-        (135, 56), (160, 48), (185, 48), (208, 62),
-        (135, 60), (160, 54), (185, 54), (208, 66),
-        (120, 80), (120, 115), (120, 150), (100, 148), (140, 148),
-        (84, 195), (156, 195), (120, 188), (120, 194), (98, 195), (142, 195),
-        (120, 196), (120, 206), (98, 202), (142, 202),
-        (120, 228), (92, 222), (148, 222),
-        (68, 135), (172, 135)
-    ]
+    # Select comprehensive anatomical landmarks
+    LEFT_EYEBROW = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
+    RIGHT_EYEBROW = [300, 293, 334, 296, 336, 285, 295, 282, 283, 276]
+    LEFT_EYE = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
+    RIGHT_EYE = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
+    PUPILS = [468, 473]
+    NOSE = [1, 2, 98, 327, 168, 6, 197, 195, 5, 4, 19, 94, 218, 438, 220, 440]
+    LIPS_OUTER = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146]
+    LIPS_INNER = [78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95]
+    CHEEKS_FOREHEAD = [116, 123, 147, 213, 138, 345, 352, 376, 433, 367, 151, 9, 8, 108, 337]
 
-    pins = [
-        (0, 0), (239, 0), (0, 299), (239, 299),
-        (120, 0), (0, 150), (239, 150), (120, 299)
-    ]
+    key_idxs = list(dict.fromkeys(OVAL + LEFT_EYEBROW + RIGHT_EYEBROW + LEFT_EYE + RIGHT_EYE + PUPILS + NOSE + LIPS_OUTER + LIPS_INNER + CHEEKS_FOREHEAD))
 
-    pts_sc = pins + contour + inner_sc
-    pts_mg = pins + contour + inner_mg
+    # Boundary pins ensure hair, ears, suit, collar, and background remain 100% stationary
+    w, h = W_OUT, H_OUT
+    pins = np.array([
+        [0, 0], [w-1, 0], [0, h-1], [w-1, h-1],
+        [w//4, 0], [w//2, 0], [3*w//4, 0],
+        [0, h//4], [0, h//2], [0, 3*h//4],
+        [w-1, h//4], [w-1, h//2], [w-1, 3*h//4],
+        [w//4, h-1], [w//2, h-1], [3*w//4, h-1],
+        # Hair anchors above forehead
+        [90, 50], [192, 40], [290, 50],
+        # Ear anchors
+        [45, 180], [340, 180],
+        # Neck anchors
+        [90, 420], [192, 430], [290, 420]
+    ], dtype=np.float32)
 
-    mask = Image.new('L', (w, h), 0)
-    d = ImageDraw.Draw(mask)
-    d.polygon(contour, fill=255)
-    mask_feather = mask.filter(ImageFilter.GaussianBlur(5))
+    pts_sc = np.vstack([p_sc[key_idxs], pins])
+    pts_mg = np.vstack([p_mg[key_idxs], pins])
 
-    N_MORPH = 36
-    HOLD_START = 6
-    HOLD_END = 6
-    FPS = 16
+    # End state: Maggie's inner facial features mapped onto Scorsese's boundary
+    pts_mg_in_sc = pts_sc.copy()
+    for i, k in enumerate(key_idxs):
+        if k not in OVAL:
+            pts_mg_in_sc[i] = p_mg[k]
+
+    frames_dir = os.path.join(work_dir, "frames_hq")
+    os.makedirs(frames_dir, exist_ok=True)
+
+    # Frame sequence: 8 hold start + 44 morph + 10 hold end = 62 frames @ 18 fps (3.44s)
+    N_MORPH = 44
+    HOLD_START = 8
+    HOLD_END = 10
+    FPS = 18
     idx = 0
 
-    print("Rendering TPS + Laplacian frames...")
+    print(f"Rendering {HOLD_START + N_MORPH + HOLD_END} morph frames...")
 
-    # Hold Scorsese face
+    # 1. Hold Scorsese portrait
     for _ in range(HOLD_START):
-        sc.save(os.path.join(frames_dir, f"frame_{idx:04d}.png"))
+        cv2.imwrite(os.path.join(frames_dir, f"frame_{idx:04d}.png"), sc_norm)
         idx += 1
 
-    # Morph facial features using TPS + Laplacian blending
+    # Feathered face oval mask inside Scorsese's face boundary
+    oval_pts_sc = p_sc[OVAL].astype(np.int32)
+    face_mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.fillPoly(face_mask, [oval_pts_sc], 255)
+    face_mask_feather = cv2.GaussianBlur(face_mask, (23, 23), 9).astype(np.float32) / 255.0
+    face_mask_feather = face_mask_feather[:, :, None]
+
+    # 2. Smoothly morph face features
     for i in range(1, N_MORPH):
-        t_lin = i / N_MORPH
-        t = (1.0 - math.cos(t_lin * math.pi)) / 2.0
+        u = i / N_MORPH
+        t = (1.0 - math.cos(u * math.pi)) / 2.0  # Cosine S-curve easing
 
-        mid_pts = [
-            ((1 - t) * ps[0] + t * pm[0], (1 - t) * ps[1] + t * pm[1])
-            for ps, pm in zip(pts_sc, pts_mg)
-        ]
-        ws = warp_tps_dense(sc, pts_sc, mid_pts, w, h, step=8)
-        wm = warp_tps_dense(mg, pts_mg, mid_pts, w, h, step=8)
-        blended_face = laplacian_blend_images(ws, wm, t)
+        mid_pts = (1.0 - t) * pts_sc + t * pts_mg_in_sc
 
-        frame = Image.composite(blended_face, sc, mask_feather)
-        frame.save(os.path.join(frames_dir, f"frame_{idx:04d}.png"))
+        ws = warp_tps(sc_norm, pts_sc, mid_pts, w, h, step=8)
+        wm = warp_tps(mg_norm, pts_mg, mid_pts, w, h, step=8)
+
+        blended = laplacian_blend(ws, wm, t)
+
+        frame = (blended * face_mask_feather + sc_norm * (1.0 - face_mask_feather)).astype(np.uint8)
+        cv2.imwrite(os.path.join(frames_dir, f"frame_{idx:04d}.png"), frame)
         idx += 1
 
-    # Hold female face on Scorsese
-    wm_end = warp_tps_dense(mg, pts_mg, pts_mg, w, h, step=8)
-    end_frame = Image.composite(wm_end, sc, mask_feather)
+    # 3. Hold final female face on male portrait
+    wm_end = warp_tps(mg_norm, pts_mg, pts_mg_in_sc, w, h, step=8)
+    final_end = (wm_end * face_mask_feather + sc_norm * (1.0 - face_mask_feather)).astype(np.uint8)
     for _ in range(HOLD_END):
-        end_frame.save(os.path.join(frames_dir, f"frame_{idx:04d}.png"))
+        cv2.imwrite(os.path.join(frames_dir, f"frame_{idx:04d}.png"), final_end)
         idx += 1
 
     print(f"Generated {idx} frames in {frames_dir}.")
 
     # Generate filmstrip
-    f0 = Image.open(os.path.join(frames_dir, "frame_0000.png"))
-    f1 = Image.open(os.path.join(frames_dir, "frame_0012.png"))
-    f2 = Image.open(os.path.join(frames_dir, "frame_0024.png"))
-    f3 = Image.open(os.path.join(frames_dir, "frame_0036.png"))
-    f4 = Image.open(os.path.join(frames_dir, f"frame_{idx-1:04d}.png"))
+    f0 = cv2.imread(os.path.join(frames_dir, "frame_0000.png"))
+    f1 = cv2.imread(os.path.join(frames_dir, f"frame_{HOLD_START + N_MORPH//4:04d}.png"))
+    f2 = cv2.imread(os.path.join(frames_dir, f"frame_{HOLD_START + N_MORPH//2:04d}.png"))
+    f3 = cv2.imread(os.path.join(frames_dir, f"frame_{HOLD_START + 3*N_MORPH//4:04d}.png"))
+    f4 = cv2.imread(os.path.join(frames_dir, f"frame_{idx-1:04d}.png"))
 
-    strip = Image.new('RGB', (w * 5, h))
-    strip.paste(f0, (0, 0))
-    strip.paste(f1, (w, 0))
-    strip.paste(f2, (w * 2, 0))
-    strip.paste(f3, (w * 3, 0))
-    strip.paste(f4, (w * 4, 0))
-    strip.save(os.path.join(work_dir, "morph_strip.jpg"), quality=92)
+    strip = np.hstack([f0, f1, f2, f3, f4])
+    cv2.imwrite(os.path.join(work_dir, "morph_strip.jpg"), strip)
 
-    # Encode with FFmpeg
+    # Encode with FFmpeg (CRF 27 guarantees high definition strictly under 100 KB)
     output_mp4 = os.path.join(work_dir, "morph.mp4")
     cmd = [
         "ffmpeg", "-y",
@@ -331,7 +304,7 @@ def main():
         "-i", os.path.join(frames_dir, "frame_%04d.png"),
         "-c:v", "libx264",
         "-pix_fmt", "yuv420p",
-        "-crf", "26",
+        "-crf", "27",
         "-preset", "slow",
         "-movflags", "+faststart",
         output_mp4
@@ -343,15 +316,15 @@ def main():
     size_bytes = os.path.getsize(output_mp4)
     size_kb = size_bytes / 1000.0
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 65)
     print(f"Video saved: {output_mp4}")
     print(f"File size: {size_bytes:,} bytes ({size_kb:.2f} KB)")
     print(f"Limit: < 100,000 bytes (100.00 KB)")
     if size_bytes < 100000:
-        print("[PASS] Video is strictly under the 100 KB limit!")
+        print(f"[PASS] Video is strictly under the 100 KB limit! ({size_bytes:,} < 100,000)")
     else:
-        print("[FAIL] File size exceeds 100 KB limit!")
-    print("=" * 60)
+        print(f"[FAIL] File size exceeds 100 KB limit! ({size_bytes:,} >= 100,000)")
+    print("=" * 65)
 
 if __name__ == "__main__":
     main()

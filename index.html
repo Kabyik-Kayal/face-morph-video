@@ -37,66 +37,66 @@
       margin-bottom: 0.5rem;
       font-size: 2rem;
     }
-    .badge {
-      display: inline-block;
-      padding: 0.35rem 0.75rem;
-      border-radius: 999px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      background: rgba(63, 185, 80, 0.15);
-      color: var(--accent-green);
-      border: 1px solid rgba(63, 185, 80, 0.3);
-      margin: 0.25rem;
+    .subtitle {
+      color: #8b949e;
+      font-size: 1.1rem;
+      margin-top: 0;
     }
     .card {
       background: var(--card-bg);
       border: 1px solid var(--border);
-      border-radius: 12px;
+      border-radius: 8px;
       padding: 1.5rem;
       margin-bottom: 1.5rem;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
     }
     .video-wrapper {
       display: flex;
-      flex-direction: column;
-      align-items: center;
+      justify-content: center;
       margin: 1.5rem 0;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
     }
     video {
-      border-radius: 8px;
-      border: 2px solid var(--border);
-      background: #000;
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-      max-width: 320px;
-      width: 100%;
+      max-width: 100%;
+      height: auto;
+      max-height: 480px;
+      display: block;
     }
-    .controls {
+    .btn-row {
       display: flex;
-      gap: 0.5rem;
+      gap: 1rem;
+      justify-content: center;
       margin-top: 1rem;
       flex-wrap: wrap;
-      justify-content: center;
     }
-    button {
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.2rem;
       background: #21262d;
       color: var(--text-bright);
       border: 1px solid var(--border);
       border-radius: 6px;
-      padding: 0.5rem 1rem;
-      cursor: pointer;
-      font-size: 0.9rem;
+      text-decoration: none;
       font-weight: 500;
+      font-size: 0.95rem;
       transition: all 0.2s;
     }
-    button:hover {
+    .btn:hover {
       background: #30363d;
       border-color: #8b949e;
     }
-    .filmstrip {
-      width: 100%;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      margin: 1rem 0;
+    .btn.primary {
+      background: #238636;
+      border-color: rgba(240,246,252,0.1);
+      color: #fff;
+    }
+    .btn.primary:hover {
+      background: #2ea043;
     }
     .stats-grid {
       display: grid;
@@ -104,108 +104,93 @@
       gap: 1rem;
       margin-top: 1rem;
     }
-    .stat-box {
+    .stat-card {
       background: #0d1117;
       border: 1px solid var(--border);
+      border-radius: 6px;
       padding: 1rem;
-      border-radius: 8px;
       text-align: center;
     }
-    .stat-label {
-      font-size: 0.8rem;
-      color: #8b949e;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
     .stat-value {
-      font-size: 1.3rem;
-      font-weight: 700;
-      color: var(--text-bright);
-      margin-top: 0.25rem;
+      font-size: 1.25rem;
+      font-weight: bold;
+      color: var(--accent-green);
+      margin-bottom: 0.25rem;
     }
-    a {
-      color: var(--accent);
-      text-decoration: none;
+    .stat-label {
+      font-size: 0.85rem;
+      color: #8b949e;
     }
-    a:hover {
-      text-decoration: underline;
+    .filmstrip {
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      margin-top: 1rem;
     }
-    code {
-      background: #21262d;
-      padding: 0.2rem 0.4rem;
-      border-radius: 4px;
-      font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, monospace;
-      font-size: 0.85em;
+    footer {
+      text-align: center;
+      color: #8b949e;
+      font-size: 0.85rem;
+      margin-top: 2rem;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <header>
-      <h1>🎭 Face Morphing Video</h1>
-      <p style="color: #8b949e;">Assignment Question 7 · Martin Scorsese → Maggie Smith</p>
-      <div>
-        <span class="badge">Size: ~45.4 KB (&lt; 100 KB limit)</span>
-        <span class="badge">Delaunay Triangulation</span>
-        <span class="badge">Cosine Easing</span>
-      </div>
+      <h1>High-Fidelity Face Morphing</h1>
+      <p class="subtitle">Assignment Question 7: Maggie Smith onto Martin Scorsese</p>
     </header>
 
     <div class="card">
-      <h2 style="color: var(--text-bright); margin-top: 0;">🎬 Morph Video Player</h2>
+      <h2 style="color: var(--text-bright); margin-top:0;">Interactive Player</h2>
       <div class="video-wrapper">
-        <video id="morphVideo" autoplay loop muted playsinline controls>
+        <video controls autoplay loop muted playsinline>
           <source src="morph.mp4" type="video/mp4">
-          Your browser does not support HTML5 video.
+          Your browser does not support the video tag.
         </video>
-        <div class="controls">
-          <button onclick="document.getElementById('morphVideo').play()">▶ Play</button>
-          <button onclick="document.getElementById('morphVideo').pause()">⏸ Pause</button>
-          <button onclick="setSpeed(0.5)">0.5x (Slow-Mo)</button>
-          <button onclick="setSpeed(1.0)">1.0x (Normal)</button>
-          <button onclick="setSpeed(1.5)">1.5x (Fast)</button>
-        </div>
       </div>
 
+      <div class="btn-row">
+        <a href="morph.mp4" download class="btn primary">Download Video (85 KB)</a>
+        <a href="https://github.com/Kabyik-Kayal/face-morph-video" class="btn" target="_blank">View GitHub Repo</a>
+        <a href="https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4" class="btn" target="_blank">Raw Video URL</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="color: var(--text-bright); margin-top:0;">Technical Metrics & Compliance</h2>
       <div class="stats-grid">
-        <div class="stat-box">
-          <div class="stat-label">File Size</div>
-          <div class="stat-value" style="color: var(--accent-green);">25,416 B</div>
+        <div class="stat-card">
+          <div class="stat-value">85,079 bytes</div>
+          <div class="stat-label">File Size (&lt; 100 KB limit)</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-label">Constraint Limit</div>
-          <div class="stat-value">&lt; 100,000 B</div>
+        <div class="stat-card">
+          <div class="stat-value">384 &times; 480</div>
+          <div class="stat-label">Resolution (H.264)</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-label">Resolution</div>
-          <div class="stat-value">240 × 300</div>
+        <div class="stat-card">
+          <div class="stat-value">3.44s @ 18 fps</div>
+          <div class="stat-label">Duration & Frame Rate</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-label">Duration / FPS</div>
-          <div class="stat-value">2.94s @ 16 fps</div>
+        <div class="stat-card">
+          <div class="stat-value">MediaPipe 478</div>
+          <div class="stat-label">Sub-Pixel 3D Mesh</div>
         </div>
       </div>
     </div>
 
     <div class="card">
-      <h2 style="color: var(--text-bright); margin-top: 0;">🎞️ Morph Progression Filmstrip</h2>
-      <p style="font-size: 0.9rem; color: #8b949e;">From left to right: Martin Scorsese (0%) → Early morph (25%) → Seamless midpoint (50%) → Late morph (75%) → Maggie Smith (100%).</p>
+      <h2 style="color: var(--text-bright); margin-top:0;">Morph Progression</h2>
+      <p style="font-size: 0.9rem; color: #8b949e; margin-bottom: 0.5rem;">
+        Martin Scorsese &rarr; Facial Landmark Transition &rarr; Maggie Smith onto Male Portrait
+      </p>
       <img src="morph_strip.jpg" alt="Morph progression filmstrip" class="filmstrip">
     </div>
 
-    <div class="card">
-      <h2 style="color: var(--text-bright); margin-top: 0;">🔗 Direct Video URLs</h2>
-      <p>Direct MP4 link for automated evaluation:</p>
-      <ul>
-        <li><strong>Direct MP4:</strong> <a href="morph.mp4">morph.mp4</a></li>
-      </ul>
-    </div>
+    <footer>
+      TDS Face Morph Submission &bull; Powered by MediaPipe FaceMesh, Thin Plate Splines & Multiresolution Laplacian Pyramids.
+    </footer>
   </div>
-
-  <script>
-    function setSpeed(speed) {
-      document.getElementById('morphVideo').playbackRate = speed;
-    }
-  </script>
 </body>
 </html>
