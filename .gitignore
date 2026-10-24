@@ -43,6 +43,9 @@ mg_face_only.jpg
 mg_oval_vis.jpg
 maggie_chin_crop.jpg
 maggie_full_preview.jpg
+debug_*.jpg
+diff_*.jpg
+jump_*.jpg
 render_hq.py
 __pycache__/
 *.pyc

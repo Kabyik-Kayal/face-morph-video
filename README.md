@@ -11,7 +11,7 @@
 | Metric | Required | Achieved | Status |
 | :--- | :--- | :--- | :--- |
 | **Direct HTTPS URL** | Publicly accessible | `https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4` | Verified |
-| **File Size** | **< 100,000 bytes** | **85,079 bytes** (~85.1 KB) | **PASS** (< 100 KB limit) |
+| **File Size** | **< 100,000 bytes** | **77,949 bytes** (~77.9 KB) | **PASS** (< 100 KB limit) |
 | **Container & Codec** | Playable in browser | MP4 (`H.264 / AVC`, `yuv420p`, progressive) | 100% Browser Compatible |
 | **Fast Web Start** | Smooth browser playback | `+faststart` (moov atom at start) | Instant streaming |
 | **Resolution** | Crisp & detailed | **384 x 480 px** (divisible by 16) | High Definition |
