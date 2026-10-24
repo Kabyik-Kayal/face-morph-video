@@ -2,6 +2,8 @@ frames/
 frames60/
 frames_v2/
 frames_face_only/
+frames_tps/
+raw_flow_test/
 scorsese.jpg
 *_preview.jpg
 *_grid*.jpg
@@ -13,6 +15,9 @@ morph_mid_50.jpg
 test_*.jpg
 warp_*.jpg
 real_morph_*.jpg
+mid_tps_*.jpg
+filmstrip_tps.jpg
+morph_tps.mp4
 *_c2*.jpg
 *_crop*.jpg
 *_clean.jpg

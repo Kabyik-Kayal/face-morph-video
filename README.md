@@ -1,6 +1,6 @@
-# 🎭 Face-Only Morph: Maggie Smith Face on Martin Scorsese Head
+# 🎭 Advanced Face Morph: Thin Plate Splines (TPS) + Laplacian Blending
 
-> **Assignment Question 7:** Face morphing of the female face (Maggie Smith) onto the male face (Martin Scorsese), keeping the male portrait's hair, ears, neck, suit, and background completely anchored and stable.  
+> **Assignment Question 7:** Face morphing of the female face (Maggie Smith) onto the male face (Martin Scorsese) using biharmonic Thin Plate Spline deformation and multiresolution frequency-separated blending.  
 > **Direct Public Video URL:** [https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4](https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4)  
 > **Interactive Web Viewer:** [https://kabyik-kayal.github.io/face-morph-video/](https://kabyik-kayal.github.io/face-morph-video/)
 
@@ -11,11 +11,12 @@
 | Metric | Required | Achieved | Status |
 | :--- | :--- | :--- | :--- |
 | **Direct HTTPS URL** | Publicly accessible | `https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4` | ✅ Valid |
-| **File Size** | **< 100,000 bytes** | **36,727 bytes** (~36.7 KB) | ✅ PASS (63.3% margin) |
+| **File Size** | **< 100,000 bytes** | **25,416 bytes** (~25.4 KB) | ✅ PASS (74.6% margin) |
 | **Container & Codec** | Playable in browser | MP4 (`H.264 / AVC`, `yuv420p`, progressive) | ✅ 100% Browser Compatible |
 | **Fast Web Start** | Smooth browser playback | `+faststart` (moov atom at start) | ✅ Instant streaming |
 | **Resolution** | Clean & detailed | 240 × 300 px | ✅ Sharp & compact |
-| **Morph Type** | Face-Only Morph | Facial features morph on male head/body | ✅ Zero background/suit change |
+| **Warping Engine** | Biharmonic Elastic Field | Thin Plate Splines (TPS, $C^1$ smooth) | ✅ Zero triangle seams |
+| **Blending Engine** | Frequency-Separated | Multiresolution Laplacian Pyramid | ✅ Zero ghosting / double features |
 | **Smoothness** | Natural & seamless | Cosine Ease-In Ease-Out (`16 fps`) | ✅ Seamless deformation |
 
 ---
