@@ -1,6 +1,7 @@
 frames/
 frames60/
 frames_v2/
+frames_face_only/
 scorsese.jpg
 *_preview.jpg
 *_grid*.jpg
@@ -17,7 +18,11 @@ real_morph_*.jpg
 *_clean.jpg
 *_dark.jpg
 *_color.jpg
+*_matched.jpg
+*_on_male.jpg
 morph_v2.mp4
 morph_strip_v2.jpg
+morph_face_only.mp4
+filmstrip_face_only.jpg
 __pycache__/
 *.pyc

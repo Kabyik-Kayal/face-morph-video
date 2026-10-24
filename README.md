@@ -1,6 +1,6 @@
-# 🎭 Face Morphing: Martin Scorsese → Maggie Smith
+# 🎭 Face-Only Morph: Maggie Smith Face on Martin Scorsese Head
 
-> **Assignment Question 7:** Morph two faces smoothly into a video smaller than **100 KB (100,000 bytes)**.  
+> **Assignment Question 7:** Face morphing of the female face (Maggie Smith) onto the male face (Martin Scorsese), keeping the male portrait's hair, ears, neck, suit, and background completely anchored and stable.  
 > **Direct Public Video URL:** [https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4](https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4)  
 > **Interactive Web Viewer:** [https://kabyik-kayal.github.io/face-morph-video/](https://kabyik-kayal.github.io/face-morph-video/)
 
@@ -11,25 +11,25 @@
 | Metric | Required | Achieved | Status |
 | :--- | :--- | :--- | :--- |
 | **Direct HTTPS URL** | Publicly accessible | `https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4` | ✅ Valid |
-| **File Size** | **< 100,000 bytes** | **36,192 bytes** (~36.2 KB) | ✅ PASS (63.8% margin) |
+| **File Size** | **< 100,000 bytes** | **36,727 bytes** (~36.7 KB) | ✅ PASS (63.3% margin) |
 | **Container & Codec** | Playable in browser | MP4 (`H.264 / AVC`, `yuv420p`, progressive) | ✅ 100% Browser Compatible |
 | **Fast Web Start** | Smooth browser playback | `+faststart` (moov atom at start) | ✅ Instant streaming |
 | **Resolution** | Clean & detailed | 240 × 300 px | ✅ Sharp & compact |
-| **Deformation Engine** | Dense Delaunay Mesh | 82 landmarks & 146 triangles | ✅ True Geometric Warp |
-| **Smoothness** | Natural & seamless | Cosine Ease-In Ease-Out (`16 fps`) | ✅ Seamless transition |
+| **Morph Type** | Face-Only Morph | Facial features morph on male head/body | ✅ Zero background/suit change |
+| **Smoothness** | Natural & seamless | Cosine Ease-In Ease-Out (`16 fps`) | ✅ Seamless deformation |
 
 ---
 
 ## 🎞️ Morph Progression Filmstrip
 
-![Morph Progression Filmstrip](morph_strip.jpg)
+![Face Morph Progression Filmstrip](morph_strip.jpg)
 
 *Progression (left to right):*
-1. **0%:** Martin Scorsese (Original aligned portrait)
-2. **25%:** Early transition (Jaw, brow, and cheek contours reshaping)
-3. **50%:** Seamless midpoint (Harmonious composite of both faces with matching eye pupils)
-4. **75%:** Late transition (Resolving into Maggie Smith's features)
-5. **100%:** Maggie Smith (Original aligned vintage portrait)
+1. **0%:** Pure Martin Scorsese (male portrait baseline)
+2. **25%:** Early facial deformation (brows arching, smile narrowing, nose contouring)
+3. **50%:** Midpoint (eyes, nose, mouth closing from open grin into subtle smile)
+4. **75%:** Late morph (facial features resolving into Maggie Smith's features)
+5. **100%:** Maggie Smith's face seamlessly morphed onto Martin Scorsese's head, suit, and background
 
 ---
 
