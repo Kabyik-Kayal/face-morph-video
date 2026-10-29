@@ -52,3 +52,5 @@ ubo_test_frames/
 render_hq.py
 __pycache__/
 *.pyc
+frames_complete/
+ubo_full_test/
