@@ -4,6 +4,7 @@ frames_v2/
 frames_face_only/
 frames_tps/
 frames_hq/
+frames_ubo*/
 raw_flow_test/
 scorsese.jpg
 maggie.jpg
@@ -46,6 +47,8 @@ maggie_full_preview.jpg
 debug_*.jpg
 diff_*.jpg
 jump_*.jpg
+ubo_*.jpg
+ubo_test_frames/
 render_hq.py
 __pycache__/
 *.pyc

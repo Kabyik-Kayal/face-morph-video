@@ -1,6 +1,7 @@
-# High-Fidelity Face Morph: MediaPipe 478 Mesh + Thin Plate Splines (TPS) + 3-Band Laplacian Blending
+# Official UBO Face Morph: Ferrara et al. (MI-BioLab/ubo-morph)
 
-> **Assignment Question 7:** Face morphing of the female face (Maggie Smith) onto the male face (Martin Scorsese) using sub-pixel 3D mesh tracking, continuous biharmonic Thin Plate Spline deformation, CIELAB tone calibration, and multiresolution frequency-separated Laplacian blending.  
+> **Assignment Question 7:** Face morphing of Martin Scorsese into Maggie Smith using the official **UBO Morphing Algorithm** from Ferrara, Franco, & Maltoni (*"Decoupling texture blending and shape warping in face morphing"*, IEEE BIOSIG 2019).  
+> **Upstream Library:** [https://github.com/MI-BioLab/ubo-morph](https://github.com/MI-BioLab/ubo-morph)  
 > **Direct Public Video URL:** [https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4](https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4)  
 > **Interactive Web Viewer:** [https://kabyik-kayal.github.io/face-morph-video/](https://kabyik-kayal.github.io/face-morph-video/)
 
@@ -11,16 +12,17 @@
 | Metric | Required | Achieved | Status |
 | :--- | :--- | :--- | :--- |
 | **Direct HTTPS URL** | Publicly accessible | `https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4` | Verified |
-| **File Size** | **< 100,000 bytes** | **77,949 bytes** (~77.9 KB) | **PASS** (< 100 KB limit) |
+| **File Size** | **< 100,000 bytes** | **93,220 bytes** (~93.2 KB) | **PASS** (< 100 KB limit) |
+| **Algorithm Base** | Official UBO Morph | [MI-BioLab/ubo-morph](https://github.com/MI-BioLab/ubo-morph) | Ferrara et al. (2019) |
 | **Container & Codec** | Playable in browser | MP4 (`H.264 / AVC`, `yuv420p`, progressive) | 100% Browser Compatible |
-| **Fast Web Start** | Smooth browser playback | `+faststart` (moov atom at start) | Instant streaming |
-| **Resolution** | Crisp & detailed | **384 x 480 px** (divisible by 16) | High Definition |
-| **Landmark Tracking** | Sub-pixel accuracy | **MediaPipe 478-Point 3D FaceMesh** (161 anchors) | Millimeter precision |
-| **Alignment** | Interpupillary Normalization | Procrustes Affine Similarity Transform | Displacements < 5 px |
-| **Color Transfer** | Natural illumination | Reinhard CIELAB Color & Luminance Calibration | Warm skin tones |
-| **Warping Engine** | Biharmonic Elastic Field | Thin Plate Splines (TPS, $C^1$ smooth) | Zero triangle seams |
-| **Blending Engine** | Frequency-Separated | 3-Band Multiresolution Laplacian Pyramid | Zero ghosting / No double teeth |
-| **Smoothness** | Natural & seamless | Cosine Ease-In Ease-Out (`18 fps`, 3.44s) | Fluid deformation |
+| **Fast Web Start** | Smooth streaming | `+faststart` (moov atom at file start) | Instant playback |
+| **Resolution** | Crisp & detailed | **360 x 480 px** | Clean portrait framing |
+| **Landmark Tracking** | Sub-pixel accuracy | **MediaPipe 478-Point 3D FaceMesh** | Pluggable UBO extractor |
+| **Eye Alignment** | Canonical interpupillary distance | UBO `_align_face_images` | Zero eye jitter |
+| **Color Equalization** | Natural tone matching | UBO CDF Histogram Equalization (`_equalize_face`) | Smooth lighting match |
+| **Warping Engine** | Anti-aliased mesh | Delaunay (970 triangles, `cv2.LINE_AA` + `blendLinear`) | Zero triangle seams |
+| **Retouching** | Natural portrait boundary | UBO `_substitute_background` with feathering | Seamless head & collar |
+| **Pacing** | Natural & seamless | Cosine Ease-In Ease-Out (`18 fps`, 3.28s) | Smooth S-curve |
 
 ---
 
@@ -30,10 +32,10 @@
 
 *Progression (left to right):*
 1. **0% (Frame 0):** Martin Scorsese baseline (male portrait with glasses, open smile, suit, tie).
-2. **25% (Frame 19):** Early transformation (eyebrows contouring, smile closing, nose refining).
-3. **50% (Frame 30):** Midpoint (Scorsese's open teeth gracefully close, eyes soften, glasses dissolve).
-4. **75% (Frame 41):** Late transformation (Maggie Smith's facial anatomy resolving into sharp focus).
-5. **100% (Frame 60):** Maggie Smith's face seamlessly integrated onto Martin Scorsese's stable head, hairline, ears, suit, and background.
+2. **25% (Frame 14):** Early UBO morphing (brows adjusting, smile narrowing, eye geometry transforming).
+3. **50% (Frame 29):** Midpoint — Canonical 50/50 UBO biometric morphed face with equalized tone.
+4. **75% (Frame 44):** Late UBO morphing (Maggie Smith's facial features resolving into sharp focus).
+5. **100% (Frame 58):** Maggie Smith's face seamlessly integrated onto the portrait with feathered boundary.
 
 ---
 
@@ -41,51 +43,38 @@
 
 ```mermaid
 flowchart TD
-    subgraph S1 ["1. Normalization & Procrustes Alignment"]
-        A["Scorsese & Maggie High-Res Photos"] --> B["MediaPipe 478 3D FaceMesh"]
-        B --> C["Inter-Pupillary Distance Normalization<br/>(Eyes aligned to canonical coordinates)"]
-        C --> D["384x480 Canonical Portrait Canvas"]
+    subgraph S1 ["1. Preprocessing & Alignment"]
+        A["Scorsese & Maggie High-Res Photos"] --> B["MediaPipe 478 3D Landmark Extractor"]
+        B --> C["UBO Eye-Center Alignment<br/>(_align_face_images)"]
+        C --> D["Canonical Aligned Portraits"]
     end
 
-    subgraph S2 ["2. Photometric Calibration"]
-        D --> E["Reinhard CIELAB Color Transfer<br/>(Matches vintage tone to warm event lighting)"]
+    subgraph S2 ["2. UBO Triangulation & Equalization"]
+        D --> E["Image Border Anchors (5 pts/edge)<br/>+ Overlap Removal"]
+        E --> F["Delaunay Triangulation (970 Triangles)<br/>(_delaunay_triangles)"]
+        D --> G["CDF Histogram Color/Lightness Equalization<br/>(_equalize_face)"]
     end
 
-    subgraph S3 ["3. Geometric Deformation"]
-        E --> F["161 Anatomical Landmarks + Boundary Pins"]
-        F --> G["Thin Plate Splines (TPS)<br/>min ∫∫ (∇²f)² dx dy (C¹ Continuous)"]
+    subgraph S3 ["3. Anti-Aliased Mesh Warping"]
+        F & G --> H["Piecewise Affine Triangle Warping<br/>(backend.warp_triangles with LINE_AA)"]
+        H --> I["Decoupled Texture Blending<br/>(backend.blend with Cosine Easing)"]
     end
 
-    subgraph S4 ["4. Frequency-Separated Blending"]
-        G --> H["3-Band Laplacian Pyramids"]
-        H --> I["L2 (Low-Freq): Cosine Tone & Lighting Blend"]
-        H --> J["L1 (Mid-Freq): Facial Contours & Muscles"]
-        H --> K["L0 (High-Freq): Steep Sigmoid Handover<br/>(Eliminates ghost teeth & double eyes)"]
-    end
-
-    subgraph S5 ["5. Seamless Anatomical Compositing"]
-        I & J & K --> L["Pyramid Reconstruction"]
-        L --> M["Feathered Face Oval Mask<br/>(Retains stable hair, ears, collar, suit, background)"]
-        M --> N["FFmpeg H.264 High-Profile &lt; 100 KB"]
+    subgraph S4 ["4. Retouching & Output"]
+        I --> J["UBO Feathered Background Substitution<br/>(_substitute_background)"]
+        J --> K["FFmpeg H.264 &lt; 100 KB Encoding<br/>(CRF 28, yuv420p, +faststart)"]
     end
 ```
 
 ---
 
-## Key Technical Advances Over Naive Methods
+## Technical Details: The UBO Morphing Algorithm
 
-### 1. Why Delaunay Triangulation Fails & Thin Plate Spline (TPS) Succeeds
-* **The Delaunay Problem:** Piecewise-affine triangles produce $C^0$ discontinuous first derivatives along triangle edges, causing angular facets, unnatural polygonal kinks, and shearing across curved facial surfaces (e.g. lips and eyelids).
-* **The TPS Solution:** TPS models a thin sheet of physical metal deflected at landmark points, solving the biharmonic equation $\Delta^2 f = 0$. Total bending energy is globally minimized, producing $C^1$ continuity everywhere with zero triangle seams.
-
-### 2. Why Simple Cross-Dissolve Fails & 3-Band Laplacian Pyramid Succeeds
-* **The Ghosting Problem:** Martin Scorsese has an open smile with teeth showing; Maggie Smith has closed lips. In a linear alpha blend, semi-transparent teeth float over closed lips, creating an eerie "ghost teeth" artifact.
-* **The Laplacian Solution:** We split spatial frequencies into 3 octave bands ($L_0, L_1, L_2$). High frequencies (teeth edges, pupils, eyelashes) switch with a steep non-linear sigmoid handover:
-  $$\alpha_{\text{high}}(t) = \frac{1}{1 + e^{-16(t - 0.5)}}$$
-  Scorsese's mouth geometrically closes *before* the high-frequency teeth texture handover, leaving zero ghosting.
-
-### 3. Reinhard Color & Luminance Calibration in CIELAB
-Maggie Smith's vintage portrait is monochrome/sepia, whereas Martin Scorsese's is a modern color photo under warm indoor lighting. By mapping mean and standard deviation in CIELAB space ($\mu_L, \sigma_L, \mu_a, \sigma_a, \mu_b, \sigma_b$), Maggie's skin reflects the warm, vibrant lighting of Scorsese's portrait without unnatural grayness.
+The pipeline is implemented using the official UBO face morphing algorithm (`ubo-morph`):
+* **Decoupling Texture and Shape:** Unlike naive morphs that conflate pixel cross-fades with geometric distortion, UBO morphing treats shape warping and texture blending as independent parameters.
+* **Histogram-Based Color Equalization:** The color/lightness distribution inside the facial convex hull of the target face is matched to the reference face via cumulative distribution function (CDF) histogram mapping.
+* **Anti-Aliased Triangle Blending:** Triangles are rasterized with `cv2.LINE_AA` and composited using `cv2.blendLinear`, preventing the black seam lines characteristic of basic Delaunay implementations.
+* **Feathered Retouching:** Outside the facial contour, background pixels are blended using a distance-transform feather proportional to the inter-pupillary distance (`0.15 * eye_distance`).
 
 ---
 
@@ -94,7 +83,7 @@ Maggie Smith's vintage portrait is monochrome/sepia, whereas Martin Scorsese's i
 ### Prerequisites
 * Python 3.10+
 * `ffmpeg` in system PATH
-* Requirements: `opencv-python`, `scipy`, `numpy`, `mediapipe`, `requests`
+* Requirements: `ubo-morph`, `mediapipe`, `opencv-contrib-python`, `numpy`, `tqdm`, `requests`
 
 ```bash
 git clone https://github.com/Kabyik-Kayal/face-morph-video.git
@@ -103,4 +92,19 @@ pip install -r requirements.txt
 python morph.py
 ```
 
-Output video is generated as `morph.mp4` (~85 KB).
+Output video is generated as `morph.mp4` (~93 KB).
+
+---
+
+## Citation
+
+```bibtex
+@inproceedings{ferrara2019decoupling,
+  title={Decoupling texture blending and shape warping in face morphing},
+  author={Ferrara, Matteo and Franco, Annalisa and Maltoni, Davide},
+  booktitle={2019 International Conference of the Biometrics Special Interest Group (BIOSIG)},
+  pages={1--5},
+  year={2019},
+  organization={IEEE}
+}
+```

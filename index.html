@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Face Morphing: Martin Scorsese to Maggie Smith</title>
+  <title>Official UBO Face Morphing: Martin Scorsese to Maggie Smith</title>
   <style>
     :root {
       --bg: #0d1117;
@@ -138,8 +138,8 @@
 <body>
   <div class="container">
     <header>
-      <h1>High-Fidelity Face Morphing</h1>
-      <p class="subtitle">Assignment Question 7: Maggie Smith onto Martin Scorsese</p>
+      <h1>Official UBO Face Morphing</h1>
+      <p class="subtitle">Assignment Question 7: Martin Scorsese &rarr; Maggie Smith via Ferrara et al. (MI-BioLab/ubo-morph)</p>
     </header>
 
     <div class="card">
@@ -152,9 +152,10 @@
       </div>
 
       <div class="btn-row">
-        <a href="morph.mp4" download class="btn primary">Download Video (78 KB)</a>
+        <a href="morph.mp4" download class="btn primary">Download Video (93 KB)</a>
         <a href="https://github.com/Kabyik-Kayal/face-morph-video" class="btn" target="_blank">View GitHub Repo</a>
         <a href="https://raw.githubusercontent.com/Kabyik-Kayal/face-morph-video/main/morph.mp4" class="btn" target="_blank">Raw Video URL</a>
+        <a href="https://github.com/MI-BioLab/ubo-morph" class="btn" target="_blank">UBO Morph Algorithm Repo</a>
       </div>
     </div>
 
@@ -162,20 +163,28 @@
       <h2 style="color: var(--text-bright); margin-top:0;">Technical Metrics & Compliance</h2>
       <div class="stats-grid">
         <div class="stat-card">
-          <div class="stat-value">77,949 bytes</div>
+          <div class="stat-value">93,220 bytes</div>
           <div class="stat-label">File Size (&lt; 100 KB limit)</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">384 &times; 480</div>
+          <div class="stat-value">360 &times; 480</div>
           <div class="stat-label">Resolution (H.264)</div>
         </div>
         <div class="stat-card">
-          <div class="stat-value">3.44s @ 18 fps</div>
+          <div class="stat-value">3.28s @ 18 fps</div>
           <div class="stat-label">Duration & Frame Rate</div>
         </div>
         <div class="stat-card">
           <div class="stat-value">MediaPipe 478</div>
           <div class="stat-label">Sub-Pixel 3D Mesh</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">970 Triangles</div>
+          <div class="stat-label">Delaunay Mesh with LINE_AA</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">CDF Matching</div>
+          <div class="stat-label">Color/Lightness Equalization</div>
         </div>
       </div>
     </div>
@@ -183,13 +192,13 @@
     <div class="card">
       <h2 style="color: var(--text-bright); margin-top:0;">Morph Progression</h2>
       <p style="font-size: 0.9rem; color: #8b949e; margin-bottom: 0.5rem;">
-        Martin Scorsese &rarr; Facial Landmark Transition &rarr; Maggie Smith onto Male Portrait
+        Martin Scorsese (Start Face) &rarr; UBO Mesh Deformation & Equalization &rarr; Maggie Smith (End Face)
       </p>
       <img src="morph_strip.jpg" alt="Morph progression filmstrip" class="filmstrip">
     </div>
 
     <footer>
-      TDS Face Morph Submission &bull; Powered by MediaPipe FaceMesh, Thin Plate Splines & Multiresolution Laplacian Pyramids.
+      TDS Face Morph Submission &bull; Powered by <a href="https://github.com/MI-BioLab/ubo-morph" style="color: var(--accent);">MI-BioLab/ubo-morph</a> (Ferrara et al., BIOSIG 2019).
     </footer>
   </div>
 </body>
